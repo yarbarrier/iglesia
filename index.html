@@ -586,48 +586,164 @@ var LOGO="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQ
   var MESES_MIN=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   var MESES_CAP=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-  $("imprimir").addEventListener("click",function(){
-    var m=$("mes").value;
-    if(!m){ msg("Elige un mes primero."); return; }
+  /* Vista previa en pantalla, con botones Imprimir y Descargar PDF */
+  function mostrarReporte(html,pdfFn){
+    window.__pdfActual=pdfFn;
+    var app=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||window.navigator.standalone, w=null;
+    if(!app){ try{ w=window.open("","_blank"); }catch(e){} }
+    if(w){
+      var btn="<button onclick=\"var P=window.opener||window.parent; if(P&&P.__pdfActual){P.__pdfActual();}\">⬇ Descargar PDF</button>";
+      w.document.write(html.replace("<button onclick='window.print()'>🖨 Imprimir</button>","<button onclick='window.print()'>🖨 Imprimir</button> "+btn));
+      w.document.close(); w.focus(); return;
+    }
+    var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:99;background:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)";
+    var bar=document.createElement("div"); bar.style.cssText="padding:8px 12px;background:#eee;display:flex;gap:8px;flex-wrap:wrap;font:14px Arial,sans-serif";
+    function mk(t,f){ var b=document.createElement("button"); b.textContent=t; b.style.cssText="font:inherit;padding:8px 12px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#000"; b.onclick=f; bar.appendChild(b); }
+    var fr=document.createElement("iframe"); fr.style.cssText="flex:1;border:0;width:100%;background:#fff";
+    fr.srcdoc=html.replace(/<div class='bar'>[\s\S]*?<\/div>/,"");
+    mk("🖨 Imprimir",function(){ try{ fr.contentWindow.focus(); fr.contentWindow.print(); }catch(e){ window.print(); } });
+    mk("⬇ Descargar PDF",function(){ if(pdfFn) pdfFn(); });
+    mk("✖ Cerrar",function(){ ov.remove(); });
+    ov.appendChild(bar); ov.appendChild(fr); document.body.appendChild(ov);
+  }
+
+  /* ---- Datos de cada reporte ---- */
+  function datosListado(m){
     var pt=m.split("-"), total=0;
     var filas=people.filter(function(p){ return val((p.aportes||{})[m])>0; })
       .sort(function(a,b){ return a.nombre.localeCompare(b.nombre,"es"); })
       .map(function(p){ var v=val(p.aportes[m]); total+=v; return {ced:p.cedula,nombre:p.nombre,valor:v}; });
     var ofre=ofrGet(m);
-    entregarPdf(pdfListado({mes:MESES_MIN[+pt[1]-1]+" de "+pt[0],filas:filas,total:total,ofre:ofre,entradas:total+ofre,generado:new Date().toLocaleDateString("es-CO")}),"diezmadores-"+m+".pdf");
-  });
-
-  $("imprimirInf").addEventListener("click",function(){
-    var m=$("mes").value;
-    if(!m){ msg("Elige un mes primero."); return; }
+    return {mes:MESES_MIN[+pt[1]-1]+" de "+pt[0],filas:filas,total:total,ofre:ofre,entradas:total+ofre,generado:new Date().toLocaleDateString("es-CO")};
+  }
+  function datosInforme(m){
     var pt=m.split("-"), diezmo=0;
     people.forEach(function(p){ diezmo+=val((p.aportes||{})[m]); });
-    var ofre=ofrGet(m), esp=Number(iv("esp",m))||0, entradas=diezmo+ofre+esp;
-    var sal=salTotal(m), ant=Number(iv("saldo",m))||0;
-    var salRows=SAL.map(function(r,i){ return {code:codigo(i),name:r[1],val:salVal(m,i)}; });
-    entregarPdf(pdfInforme({
+    var ofre=ofrGet(m), esp=Number(iv("esp",m))||0, entradas=diezmo+ofre+esp, sal=salTotal(m), ant=Number(iv("saldo",m))||0;
+    return {
       pastor:iv("pastor",m), activos:Number(iv("activos",m))||0, totalM:Number(iv("total",m))||0, bautizados:Number(iv("bautizados",m))||0,
       diezmo:diezmo, ofre:ofre, esp:esp, entradas:entradas, saldoAnt:ant, sal:sal, saldoActual:ant+entradas-sal,
       informe:iv("informe",m), mesAnio:MESES_CAP[+pt[1]-1]+" - "+pt[0], depto:iv("depto",m), ciudad:iv("ciudad",m), barrio:iv("barrio",m),
-      recibido:iv("recibido",m), salRows:salRows
-    }),"hoja-informe-"+m+".pdf");
-  });
-
-  $("imprimirCob").addEventListener("click",function(){
-    var m=$("mes").value;
-    if(!m){ msg("Elige un mes primero."); return; }
+      recibido:iv("recibido",m), salRows:SAL.map(function(r,i){ return {code:codigo(i),name:r[1],val:salVal(m,i)}; })
+    };
+  }
+  function datosCobro(m){
     var pt=m.split("-"), anio=+pt[0], mes=+pt[1];
     var fecha=String(new Date(anio,mes,0).getDate()).padStart(2,"0")+"-"+String(mes).padStart(2,"0")+"-"+anio;
     var diezmo=0; people.forEach(function(p){ diezmo+=val((p.aportes||{})[m]); });
     var entradas=diezmo+ofrGet(m)+(Number(iv("esp",m))||0), sal=salTotal(m), base=entradas-sal;
-    if(base<=0){ msg("Entradas ("+fmt(entradas)+") menos salidas ("+fmt(sal)+") da "+fmt(base)+". Revisa los diezmos, las ofrendas y las salidas del mes antes de hacer las cuentas de cobro."); return; }
+    if(base<=0){ msg("Entradas ("+fmt(entradas)+") menos salidas ("+fmt(sal)+") da "+fmt(base)+". Revisa los diezmos, las ofrendas y las salidas del mes antes de hacer las cuentas de cobro."); return null; }
     var m1=Math.floor(base/2), m2=base-m1;
     function doc(nombre,ced,v){ return {nombre:nombre||"",ced:ced||"",valor:v,valorTxt:fmt(v),letras:enLetras(v).toUpperCase()+(v%1000000===0?" DE":"")+" PESOS M/CTE"}; }
-    entregarPdf(pdfCobro({
-      nit:iv("nit",m), fecha:fecha, mesNombre:MESES_CAP[mes-1], anio:anio,
-      docs:[doc(iv("pastor",m),iv("cedpastor",m),m1), doc(iv("pastora",m),iv("cedpastora",m),m2)]
-    }),"cuentas-de-cobro-"+m+".pdf");
+    return {nit:iv("nit",m),fecha:fecha,mesNombre:MESES_CAP[mes-1],anio:anio,entradas:entradas,sal:sal,base:base,
+      docs:[doc(iv("pastor",m),iv("cedpastor",m),m1),doc(iv("pastora",m),iv("cedpastora",m),m2)]};
+  }
+
+  /* ---- Vista previa (HTML) de cada reporte ---- */
+  function htmlListado(D){
+    var filas=D.filas.map(function(f,i){ return "<tr><td>"+(i+1)+"</td><td>"+escH(f.ced)+"</td><td>"+escH(f.nombre)+"</td><td class='r'>"+fmt(f.valor)+"</td></tr>"; }).join("")
+      ||"<tr><td colspan='4'>No hay registros en este mes.</td></tr>";
+    var css="body{font:14px/1.4 Arial,sans-serif;color:#000;background:#fff;margin:30px}"
+     +".logo{text-align:center}.logo img{width:260px;max-width:60%;height:auto}"
+     +"h1{font-size:22px;margin:6px 0 0;text-align:center}h2{font-size:15px;font-weight:normal;margin:4px 0 18px;text-align:center}"
+     +"table{width:100%;border-collapse:collapse}th,td{border:1px solid #444;padding:6px 8px;text-align:left}"
+     +"th{background:#eee}.r{text-align:right}tfoot td{font-weight:bold}.bar{margin-bottom:16px}@media print{.bar{display:none}body{margin:10mm}}";
+    return "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Listado "+escH(D.mes)+"</title><style>"+css+"</style></head><body>"
+     +"<div class='bar'><button onclick='window.print()'>🖨 Imprimir</button></div>"
+     +"<div class='logo'><img src='"+LOGO+"' alt='Iglesia La Luz Verdadera'></div><h1>Diezmadores</h1><h2>Mes: "+escH(D.mes)+"</h2>"
+     +"<table><thead><tr><th style='width:40px'>N°</th><th>N° de cédula</th><th>Nombre completo</th><th class='r'>Valor / diezmo</th></tr></thead><tbody>"+filas+"</tbody>"
+     +"<tfoot><tr><td colspan='3'>TOTAL DIEZMADORES ("+D.filas.length+")</td><td class='r'>"+fmt(D.total)+"</td></tr>"
+     +"<tr><td colspan='3'>TOTAL OFRENDAS</td><td class='r'>"+fmt(D.ofre)+"</td></tr>"
+     +"<tr><td colspan='3'>TOTAL ENTRADAS</td><td class='r'>"+fmt(D.entradas)+"</td></tr></tfoot></table>"
+     +"<p style='margin-top:12px;font-size:12px;color:#555'>Generado el "+D.generado+"</p></body></html>";
+  }
+  function htmlInforme(D){
+    function b(n){ return n?fmt(n):""; }
+    var salRows=D.salRows.map(function(r){ return "<tr><td class='c'>"+escH(r.code)+"</td><td>"+escH(r.name)+"</td><td class='r'>"+b(r.val)+"</td></tr>"; }).join("");
+    var css="@page{size:A4;margin:8mm}body{font:11px/1.25 Arial,sans-serif;color:#000;background:#fff;margin:14px}"
+     +"table{width:100%;border-collapse:collapse;margin-bottom:10px}td,th{border:1px solid #333;padding:2px 5px;text-align:left}"
+     +"th{background:#ddd}.r{text-align:right}.c{width:70px;font-size:10px}.t td:first-child{font-weight:bold;width:42%}"
+     +".top{position:relative;text-align:center}.top img{width:230px}.top .tt{position:absolute;right:0;bottom:0;font:italic bold 15px Arial}"
+     +".cols{display:flex;gap:16px;margin-top:8px}.cols>div{flex:1}.cols .l{flex:0 0 46%}"
+     +".h{font-weight:bold;margin:0 0 3px}.u{display:inline-block;border-bottom:1px solid #000;min-width:150px;padding:0 4px}"
+     +".firma{margin-top:42px;border-top:1px solid #000;width:75%;padding-top:2px;font-weight:bold}"
+     +"tfoot td,.tot td{font-weight:bold;background:#f0f0f0}.bar{margin-bottom:10px}@media print{.bar{display:none}body{margin:0}}";
+    return "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Hoja de informe "+escH(D.mesAnio)+"</title><style>"+css+"</style></head><body>"
+     +"<div class='bar'><button onclick='window.print()'>🖨 Imprimir</button></div>"
+     +"<div class='top'><img src='"+LOGO+"' alt='Iglesia La Luz Verdadera'><div class='tt'>Hoja de informe</div></div>"
+     +"<div class='cols'><div class='l'>"
+       +"<p><b>Nombre del Pastor:</b> <span class='u'>"+escH(D.pastor)+"</span></p>"
+       +"<table class='t'><tr><th colspan='2'>Datos Aproximados de</th></tr>"
+       +"<tr><td>Miembros Activos</td><td class='r'>"+b(D.activos)+"</td></tr>"
+       +"<tr><td>Total Miembros</td><td class='r'>"+b(D.totalM)+"</td></tr>"
+       +"<tr><td>Bautizados en Agua</td><td class='r'>"+b(D.bautizados)+"</td></tr></table>"
+       +"<table><tr><th colspan='2'>Ingresos (Entradas)</th><th class='r'>Valor</th></tr>"
+       +"<tr><td class='c'>42950501</td><td>Diezmo</td><td class='r'>"+fmt(D.diezmo)+"</td></tr>"
+       +"<tr><td class='c'>42950502</td><td>Ofrendas</td><td class='r'>"+fmt(D.ofre)+"</td></tr>"
+       +"<tr><td class='c'>42950503</td><td>Ofrendas Especiales</td><td class='r'>"+b(D.esp)+"</td></tr>"
+       +"<tr class='tot'><td colspan='2'>Total Entradas</td><td class='r'>"+fmt(D.entradas)+"</td></tr></table>"
+       +"<table><tr><th>Flujo de Caja Total</th><th class='r'>Valor</th></tr>"
+       +"<tr><td>Saldo Anterior</td><td class='r'>"+b(D.saldoAnt)+"</td></tr>"
+       +"<tr><td>Total Entradas</td><td class='r'>"+fmt(D.entradas)+"</td></tr>"
+       +"<tr><td>Total Salidas</td><td class='r'>"+fmt(D.sal)+"</td></tr>"
+       +"<tr class='tot'><td>Saldo Actual</td><td class='r'>"+fmt(D.saldoActual)+"</td></tr></table>"
+       +"<div class='firma'>Pastor o Líder</div>"
+       +"<p style='margin-top:26px'><b>Recibido Por:</b> <span class='u'>"+escH(D.recibido)+"</span></p>"
+       +"<div class='firma'>Secretaria Dpto. Contabilidad</div>"
+     +"</div><div>"
+       +"<table class='t'><tr><td>Informe N°</td><td>"+escH(D.informe)+"</td></tr>"
+       +"<tr><td>Mes y Año</td><td>"+escH(D.mesAnio)+"</td></tr>"
+       +"<tr><td>Departamento</td><td>"+escH(D.depto)+"</td></tr>"
+       +"<tr><td>Ciudad</td><td>"+escH(D.ciudad)+"</td></tr>"
+       +"<tr><td>Barrio</td><td>"+escH(D.barrio)+"</td></tr></table>"
+       +"<p class='h'>Compras - Gastos generales (Salidas)</p>"
+       +"<table>"+salRows+"<tfoot><tr><td colspan='2'>Total Salidas</td><td class='r'>"+fmt(D.sal)+"</td></tr></tfoot></table>"
+     +"</div></div></body></html>";
+  }
+  function htmlCobro(D){
+    var css="@page{size:A4;margin:12mm}body{font:16px/2.3 Arial,sans-serif;color:#000;background:#fff;margin:0}"
+     +".pg{padding:10px 30px;page-break-after:always;min-height:260mm}.pg:last-child{page-break-after:auto}"
+     +".logo{text-align:center;line-height:1.2}.logo img{width:260px;max-width:70%}.nit{font-size:12px;font-weight:bold}"
+     +".u{display:inline-block;border-bottom:1px solid #000;padding:0 8px;min-width:120px;text-align:center}"
+     +"h2{text-align:center;margin:50px 0 0;font-size:20px}h3{text-align:center;margin:30px 0 20px;font-size:18px}"
+     +"p{margin:6px 0;text-align:justify}.firma{margin-top:90px}.ln{border-top:1px solid #000;width:260px;margin-top:50px}"
+     +".bar{position:sticky;top:0;background:#f1f1f1;padding:10px 16px;font:14px Arial;border-bottom:1px solid #ccc}.bar a,.bar button{margin-right:10px}"
+     +"@media print{.bar{display:none}.pg{padding:0 8px}}";
+    var pags=D.docs.map(function(d,i){
+      return "<section class='pg' id='"+(i?"pastora":"pastor")+"'>"
+       +"<div class='logo'><img src='"+LOGO+"' alt='Iglesia La Luz Verdadera'>"+(D.nit?"<div class='nit'>NIT "+escH(D.nit)+"</div>":"")+"</div>"
+       +"<p style='margin-top:40px'><b>Fecha:</b> <span class='u' style='min-width:260px'>"+D.fecha+"</span></p>"
+       +"<h2>CUENTA DE COBRO</h2><h3>DEBE A:</h3>"
+       +"<p><b>El Señor(a)</b> <span class='u' style='min-width:380px'>"+escH(d.nombre)+"</span></p>"
+       +"<p><b>identificado (a) con la cédula de ciudadanía N°</b> <span class='u' style='min-width:200px'>"+escH(d.ced)+"</span></p>"
+       +"<p><b>La suma de (LETRAS)</b> <span class='u' style='min-width:300px'>"+escH(d.letras)+"</span></p>"
+       +"<p><b>($</b> <span class='u'>"+fmt(d.valor)+"</span><b>),</b> por concepto de <i>Emolumentos Eclesiásticos</i> del mes de <span class='u'>"+D.mesNombre+"</span> del año <span class='u' style='min-width:60px'>"+D.anio+"</span>.</p>"
+       +"<div class='firma'><b>Atentamente PASTOR (A)</b><div class='ln'></div>"+escH(d.nombre)+"<br><b>C.C.</b> "+escH(d.ced)+"</div>"
+       +"</section>";
+    }).join("");
+    return "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Cuentas de cobro "+D.mesNombre+" "+D.anio+"</title><style>"+css+"</style></head><body>"
+     +"<div class='bar'><button onclick='window.print()'>🖨 Imprimir</button> Ir a: <a href='#pastor'>Pastor</a><a href='#pastora'>Pastora</a>"
+     +"<span style='color:#555'>Entradas "+fmt(D.entradas)+" − Salidas "+fmt(D.sal)+" = "+fmt(D.base)+" → mitad para cada uno</span></div>"
+     +pags+"</body></html>";
+  }
+
+  /* ---- Botones ---- */
+  $("imprimir").addEventListener("click",function(){
+    var m=$("mes").value; if(!m){ msg("Elige un mes primero."); return; }
+    var D=datosListado(m);
+    mostrarReporte(htmlListado(D),function(){ entregarPdf(pdfListado(D),"diezmadores-"+m+".pdf"); });
   });
+  $("imprimirInf").addEventListener("click",function(){
+    var m=$("mes").value; if(!m){ msg("Elige un mes primero."); return; }
+    var D=datosInforme(m);
+    mostrarReporte(htmlInforme(D),function(){ entregarPdf(pdfInforme(D),"hoja-informe-"+m+".pdf"); });
+  });
+  $("imprimirCob").addEventListener("click",function(){
+    var m=$("mes").value; if(!m){ msg("Elige un mes primero."); return; }
+    var D=datosCobro(m); if(!D) return;
+    mostrarReporte(htmlCobro(D),function(){ entregarPdf(pdfCobro(D),"cuentas-de-cobro-"+m+".pdf"); });
+  });
+
 
 
     $("mes").addEventListener("change",infBuild);
