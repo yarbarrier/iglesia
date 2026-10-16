@@ -832,25 +832,23 @@ var LOGO="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQ
     r.readAsText(fl);
   });
 
-  /* Limpiar todo (con doble confirmación y copia automática) */
+  /* Limpiar todo (con doble confirmación, sin copia) */
   var limpPend=0;
   $("limpiar").addEventListener("click",function(){
     var b=$("limpiar");
     if(!limpPend){
-      limpPend=1; b.textContent="⚠ ¿Seguro? Pulsa otra vez para borrar TODO";
+      limpPend=1; b.textContent="⚠ ¿Seguro? Se borra TODO y no se puede deshacer. Pulsa otra vez";
       setTimeout(function(){ limpPend=0; b.textContent="🧹 Limpiar todo"; },5000);
       return;
     }
     limpPend=0; b.textContent="🧹 Limpiar todo";
-    descargar("copia-antes-de-limpiar-"+new Date().toISOString().slice(0,10)+".json",
-      JSON.stringify({personas:store,ofrendas:ofr,informe:inf},null,1),"application/json");
     Object.keys(store).forEach(function(k){ delete store[k]; });
     Object.keys(ofr).forEach(function(k){ delete ofr[k]; });
     inf.g={}; inf.m={};
     ofrGuardar(); infSave(); persist(); infBuild();
     $("ofr").value=""; openHist={};
     $("msg").style.color="var(--accent)";
-    $("msg").textContent="✓ Todo quedó limpio. Se bajó una copia de lo que había; si te arrepientes, cárgala con “Restaurar”.";
+    $("msg").textContent="✓ Todo quedó limpio.";
   });
 
   $("resp").addEventListener("click",function(){
