@@ -118,9 +118,36 @@ h3.sub{font:700 12px var(--font);letter-spacing:.1em;text-transform:uppercase;ma
   tbody tr.hrow td{display:block}
   tbody tr.hrow td::before{content:none}
 }
+/* ===== Ambiente espacial ===== */
+#espacio{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.tierra{position:fixed;left:50%;bottom:0;width:190vw;height:190vw;border-radius:50%;background:#000;z-index:0;pointer-events:none;
+  transform:translate(-50%,calc(100% - 6vh));border-top:1px solid rgba(215,232,255,.5);
+  box-shadow:0 -6px 40px rgba(150,190,255,.22),inset 0 10px 30px rgba(150,190,255,.14)}
+.wrap{position:relative;z-index:1}
+.card,.kpi{background:rgba(0,0,0,.62)}
+.hrk{margin-left:auto;cursor:pointer;flex:0 0 auto;animation:flota 3.2s ease-in-out infinite alternate}
+.hrk svg{height:68px;width:auto;display:block}
+@keyframes flota{from{transform:translateY(2px) rotate(-1deg)}to{transform:translateY(-5px) rotate(1deg)}}
+.flame{transform-box:fill-box;transform-origin:50% 0;animation:fl .13s infinite alternate}
+@keyframes fl{from{transform:scaleY(.78) scaleX(.9)}to{transform:scaleY(1.18) scaleX(1.05)}}
+#lanz{position:fixed;left:calc(100% - 72px);top:100%;z-index:3;pointer-events:none;width:40px;height:130px;animation:subir 3.6s cubic-bezier(.55,0,.85,.45) forwards}
+#lanz svg{display:block;width:40px;height:130px}
+#lanz .humo{position:absolute;left:50%;top:100%;width:12px;height:80vh;transform:translateX(-50%);background:linear-gradient(to bottom,rgba(240,240,250,.4),rgba(240,240,250,0));filter:blur(3px)}
+@keyframes subir{from{transform:translateY(40px)}to{transform:translateY(calc(-100vh - 330px))}}
+.wrap>*{animation:ent .7s cubic-bezier(.2,.7,.2,1) both}
+.wrap>*:nth-child(2){animation-delay:.05s}.wrap>*:nth-child(3){animation-delay:.1s}.wrap>*:nth-child(4){animation-delay:.15s}
+.wrap>*:nth-child(5){animation-delay:.2s}.wrap>*:nth-child(6){animation-delay:.25s}.wrap>*:nth-child(7){animation-delay:.3s}.wrap>*:nth-child(8){animation-delay:.35s}
+@keyframes ent{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@media (max-width:640px){.hrk svg{height:54px}}
+@media (prefers-reduced-motion:reduce){
+  .hrk,.flame,.wrap>*{animation:none}
+  #lanz{display:none}
+}
 </style>
 </head>
 <body>
+<canvas id="espacio" aria-hidden="true"></canvas>
+<div class="tierra" aria-hidden="true"></div>
 <div class="wrap">
 <header class="top">
   <div class="logo"><img id="hdrLogo" alt="Iglesia La Luz Verdadera"></div>
@@ -128,6 +155,7 @@ h3.sub{font:700 12px var(--font);letter-spacing:.1em;text-transform:uppercase;ma
     <h1>Registro de diezmadores</h1>
     <p>Iglesia La Luz Verdadera</p>
   </div>
+  <div class="hrk" id="hrk" title="Lanzar cohete"></div>
 </header>
 
 <div id="msg"></div>
@@ -939,6 +967,60 @@ var LOGO="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQ
       $("file").value="";
     };
     r.readAsText(fl);
+  });
+})();
+</script>
+<script>
+/* Ambiente espacial: estrellas que avanzan, cohete que despega y horizonte de la Tierra */
+(function(){
+  var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function rk(k){
+    return '<svg viewBox="0 0 40 130" width="40" height="130" aria-hidden="true"><defs>'
+     +'<linearGradient id="fl'+k+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#ffd9a0"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></linearGradient>'
+     +'<linearGradient id="bd'+k+'" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7d7e8a"/><stop offset=".45" stop-color="#f0f0fa"/><stop offset="1" stop-color="#62636e"/></linearGradient></defs>'
+     +'<g class="flame"><path d="M15 94 Q20 132 25 94 Z" fill="url(#fl'+k+')"/></g>'
+     +'<path d="M20 3 C25 14 26 26 26 40 L26 88 L14 88 L14 40 C14 26 15 14 20 3Z" fill="url(#bd'+k+')"/>'
+     +'<path d="M14 68 L6 93 L14 88Z M26 68 L34 93 L26 88Z" fill="#9a9aa6"/>'
+     +'<rect x="14" y="88" width="12" height="5" fill="#545457"/>'
+     +'<circle cx="20" cy="34" r="2.2" fill="#000" opacity=".55"/></svg>';
+  }
+  var h=document.getElementById("hrk"); if(h) h.innerHTML=rk("h");
+  function lanzar(){
+    if(document.getElementById("lanz")) return;
+    var d=document.createElement("div"); d.id="lanz"; d.setAttribute("aria-hidden","true");
+    d.innerHTML='<div class="humo"></div>'+rk("l"); document.body.appendChild(d);
+    d.addEventListener("animationend",function(e){ if(e.target===d) d.remove(); });
+  }
+  var visto=false; try{ visto=sessionStorage.getItem("lanz")==="1"; sessionStorage.setItem("lanz","1"); }catch(e){}
+  if(!reduce&&!visto) setTimeout(lanzar,500);
+  if(h) h.addEventListener("click",function(){ if(!reduce) lanzar(); });
+
+  var c=document.getElementById("espacio"); if(!c||!c.getContext) return;
+  var x=c.getContext("2d"), W=0, H=0, st=[], dpr=Math.min(window.devicePixelRatio||1,2), raf=0;
+  function medir(){
+    W=window.innerWidth; H=window.innerHeight;
+    c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);
+    x.setTransform(dpr,0,0,dpr,0,0);
+    var n=Math.max(70,Math.min(Math.round(W*H/9000),220)); st=[];
+    for(var i=0;i<n;i++){ var z=Math.random(); st.push({x:Math.random()*W,y:Math.random()*H,z:z,r:.4+z*1.1,v:.08+z*.45,t:Math.random()*6.28}); }
+  }
+  function pintar(t){
+    x.clearRect(0,0,W,H);
+    for(var i=0;i<st.length;i++){
+      var s=st[i];
+      if(!reduce){ s.y+=s.v; if(s.y>H+2){ s.y=-2; s.x=Math.random()*W; } }
+      var a=(.3+.7*s.z)*(.72+.28*Math.sin(t/650+s.t));
+      x.fillStyle="rgba(240,240,250,"+a.toFixed(2)+")";
+      x.beginPath(); x.arc(s.x,s.y,s.r,0,6.2832); x.fill();
+    }
+  }
+  function ciclo(t){ pintar(t); raf=requestAnimationFrame(ciclo); }
+  medir();
+  if(reduce){ pintar(0); } else { raf=requestAnimationFrame(ciclo); }
+  window.addEventListener("resize",function(){ medir(); if(reduce) pintar(0); });
+  document.addEventListener("visibilitychange",function(){
+    if(reduce) return;
+    if(document.hidden){ cancelAnimationFrame(raf); } else { raf=requestAnimationFrame(ciclo); }
   });
 })();
 </script>
